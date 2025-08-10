@@ -1,0 +1,129 @@
+// server.js
+const express = require('express');
+const multer = require('multer');
+const fetch = require('node-fetch');
+const FormData = require('form-data');
+const path = require('path');
+require('dotenv').config();
+
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
+
+/**
+ * ENV you must set (see .env.example)
+ * CMIS_URL:            e.g. https://<host>:<port>/otcs/cmis/browser
+ * CMIS_REPOSITORY_ID:  e.g. 1 or a UUID, depends on your repo
+ * CMIS_FOLDER_ID:      e.g. 2000 (Content Server) or repo-specific object id of target folder
+ * CMIS_USERNAME:       repo user
+ * CMIS_PASSWORD:       password
+ *
+ * Optional (for custom metadata if your type supports it):
+ * CUSTOM_NAME_PROP:    e.g. my:personName
+ * CUSTOM_ID_PROP:      e.g. my:personId
+ * CMIS_OBJECT_TYPE_ID: default 'cmis:document' (set your custom type here if needed)
+ */
+
+const {
+  CMIS_URL,
+  CMIS_REPOSITORY_ID,
+  CMIS_FOLDER_ID,
+  CMIS_USERNAME,
+  CMIS_PASSWORD,
+  CUSTOM_NAME_PROP,
+  CUSTOM_ID_PROP,
+  CMIS_OBJECT_TYPE_ID = 'cmis:document',
+  PORT = 3000
+} = process.env;
+
+if (!CMIS_URL || !CMIS_REPOSITORY_ID || !CMIS_FOLDER_ID || !CMIS_USERNAME || !CMIS_PASSWORD) {
+  console.error('Missing required CMIS env vars. See .env.example');
+  process.exit(1);
+}
+
+app.use(express.static('public'));
+
+app.post('/api/submit', upload.single('file'), async (req, res) => {
+  try {
+    const personName = (req.body.personName || '').trim();
+    const personId = (req.body.personId || '').trim();
+    const file = req.file;
+
+    if (!personName || !personId || !file) {
+      return res.status(400).json({ error: 'name, id, and file are required' });
+    }
+
+    // Choose a nice cmis:name
+    const safeBase = path.parse(file.originalname).name.replace(/[^\w\-\.]+/g, '_').slice(0, 120);
+    const cmisName = `${safeBase || 'submission'}_${personId}${path.extname(file.originalname) || ''}`;
+
+    // Build CMIS Browser Binding URL targeting the folder BY ID
+    // Pattern: {CMIS_URL}/{repoId}/id/{folderId}
+    const targetUrl = `${CMIS_URL.replace(/\/+$/, '')}/${encodeURIComponent(CMIS_REPOSITORY_ID)}/id/${encodeURIComponent(CMIS_FOLDER_ID)}`;
+
+    // Build multipart per CMIS Browser Binding (cmisaction=createDocument)
+    const fd = new FormData();
+    fd.append('cmisaction', 'createDocument');
+    fd.append('propertyId[0]', 'cmis:objectTypeId');
+    fd.append('propertyValue[0]', CMIS_OBJECT_TYPE_ID);
+    fd.append('propertyId[1]', 'cmis:name');
+    fd.append('propertyValue[1]', cmisName);
+
+    // Store metadata:
+    // 1) Put a human-readable summary in cmis:description (works everywhere)
+    fd.append('propertyId[2]', 'cmis:description');
+    fd.append('propertyValue[2]', `Name=${personName}; ID=${personId}`);
+
+    // 2) Optionally set custom props if your type supports them
+    let pIndex = 3;
+    if (CUSTOM_NAME_PROP) {
+      fd.append(`propertyId[${pIndex}]`, CUSTOM_NAME_PROP);
+      fd.append(`propertyValue[${pIndex}]`, personName);
+      pIndex++;
+    }
+    if (CUSTOM_ID_PROP) {
+      fd.append(`propertyId[${pIndex}]`, CUSTOM_ID_PROP);
+      fd.append(`propertyValue[${pIndex}]`, personId);
+      pIndex++;
+    }
+
+    // Content stream
+    fd.append('content', file.buffer, {
+      filename: cmisName,
+      contentType: file.mimetype || 'application/octet-stream',
+      knownLength: file.size
+    });
+
+    // Optional versioning (none | major | minor), default none
+    fd.append('versioningState', 'none');
+    // Ask for succinct JSON response
+    fd.append('succinct', 'true');
+
+    // Basic auth
+    const auth = Buffer.from(`${CMIS_USERNAME}:${CMIS_PASSWORD}`).toString('base64');
+
+    const resp = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}` },
+      body: fd
+    });
+
+    const text = await resp.text();
+    let json;
+    try { json = JSON.parse(text); } catch { /* leave as text */ }
+
+    if (!resp.ok) {
+      return res.status(resp.status).json({ error: json?.message || text || 'CMIS error' });
+    }
+
+    // Return minimal info to the client
+    const objectId = json?.succinctProperties?.['cmis:objectId'] || json?.['cmis:objectId'] || null;
+    return res.json({ ok: true, objectId, name: cmisName });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: e.message || 'Server error' });
+  }
+});
+
+app.listen(Number(PORT), () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
