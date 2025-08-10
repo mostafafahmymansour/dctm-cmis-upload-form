@@ -1,0 +1,97 @@
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sample Project by MFM!</title>
+  <title>Submit to DCTM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --w: 520px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#0f172a; color:#e2e8f0; display:flex; min-height:100dvh; align-items:center; justify-content:center; margin:0; }
+    .card { width: min(92vw, var(--w)); background:#111827; border:1px solid #1f2937; border-radius:14px; padding:28px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    h1 { margin:0 0 18px; font-size: 22px; }
+    p.hint { margin:0 0 22px; color:#94a3b8; font-size:14px; }
+    label { display:block; font-size:14px; color:#cbd5e1; margin:14px 0 8px; }
+    input[type="text"], input[type="number"], input[type="file"] {
+      width:100%; padding:12px 14px; border-radius:10px; border:1px solid #374151; background:#0b1220; color:#e5e7eb; outline:none;
+    }
+    input[type="text"]:focus, input[type="number"]:focus { border-color:#3b82f6; }
+    .row { display:flex; gap:12px; }
+    .row > div { flex:1; }
+    button {
+      margin-top:18px; width:100%; padding:12px 14px; border-radius:12px; border:0; background:#3b82f6; color:#fff;
+      font-weight:600; cursor:pointer;
+    }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .msg { margin-top:14px; font-size:14px; }
+    .ok { color:#34d399; }
+    .err { color:#fca5a5; }
+    .small { font-size:12px; color:#94a3b8; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Send to OpenText</h1>
+    <p class="hint">Fill in the details and attach a file. We’ll create a CMIS document on submit.</p>
+
+    <form id="uploadForm">
+      <div class="row">
+        <div>
+          <label for="personName">Full name</label>
+          <input id="personName" name="personName" type="text" required placeholder="e.g., Sarah Ahmed" />
+        </div>
+        <div>
+          <label for="personId">ID number</label>
+          <input id="personId" name="personId" type="text" required pattern="[A-Za-z0-9-_]{3,64}" placeholder="e.g., 1029384756" />
+        </div>
+      </div>
+
+      <label for="file">Attachment</label>
+      <input id="file" name="file" type="file" required />
+
+      <button id="btn" type="submit">Submit</button>
+      <div id="msg" class="msg"></div>
+      <div class="small">Your file is sent server-side to OpenText using CMIS Browser Binding.</div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const btn = document.getElementById('btn');
+    const msg = document.getElementById('msg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      msg.className = 'msg';
+      if (!form.reportValidity()) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      try {
+        const fd = new FormData(form);
+        const res = await fetch('/api/submit', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data?.error || 'Upload failed');
+        }
+
+        msg.textContent = `✓ Created document ${data.objectId || ''}`.trim();
+        msg.classList.add('ok');
+        form.reset();
+      } catch (err) {
+        msg.textContent = `✗ ${err.message}`;
+        msg.classList.add('err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit';
+      }
+    });
+  </script>
+</body>
+</html>
