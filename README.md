@@ -1,10 +1,8 @@
 # dctm-cmis-upload-form
 A minimal Node.js + HTML web application that captures a user’s details and file attachment, then uploads them to an OpenText DCTM repository using the CMIS Browser Binding API. Includes a responsive frontend form, secure backend bridge.
 
-/**
-* --Mostafa Mansour - Lead Solutions Consultant
-* --Step-by-step deployment guide
- */
+#Mostafa Mansour - Lead Solutions Consultant
+#Step-by-step deployment guide
 
 
 Step 1 — Install verify CMIS 
@@ -76,7 +74,7 @@ Copy
 Edit
 npm install
 npm start
-# open http://localhost:3000
+# open http://localhost:****
 Submit the form—your Name, ID Number, and file are posted to /api/submit, and the backend performs a CMIS Browser “createDocument” into the folder you configured. (The parameters and flow mirror the CMIS Browser Binding spec.) 
 OASIS Open
 GitHub
